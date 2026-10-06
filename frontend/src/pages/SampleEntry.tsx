@@ -236,7 +236,7 @@ export default function SampleEntry() {
             采集与离散率
           </Typography.Title>
           <Typography.Text type="secondary">
-            按汇流箱录入组串电流电压，系统即时计算离散率并按阈值标红；辐照度不同自动做归一化修正。
+            按汇流箱录入组串电流电压，系统即时按同窗复核口径计算离散率并标红：每箱取最近 8 点、保留辐照中位数 ±15% 带宽内的点、基准取同窗归一化电流中位数，云影不乱跳；窗内不足 3 串保留原判定。
           </Typography.Text>
         </div>
         <Space wrap>
@@ -327,7 +327,7 @@ export default function SampleEntry() {
                 size="small"
                 dataSource={filtered}
                 pagination={{ pageSize: 10, size: 'small' }}
-                scroll={{ x: 1180 }}
+                scroll={{ x: 1230 }}
                 columns={[
                   { title: '采集时间', dataIndex: 'sampledAt', width: 140 },
                   {
@@ -363,7 +363,7 @@ export default function SampleEntry() {
                   },
                   {
                     title: '离散率',
-                    width: 160,
+                    width: 210,
                     render: (_, row) => {
                       const stat = statOfString.get(row.stringId);
                       return (
@@ -372,6 +372,10 @@ export default function SampleEntry() {
                           thresholds={thresholds}
                           biasPercent={stat?.currentBiasPercent}
                           sampleCount={stat?.sampleCount}
+                          reviewed={stat?.reviewed}
+                          reviewReason={stat?.reviewReason}
+                          peerStringCount={stat?.peerStringCount}
+                          windowPointCount={stat?.windowPointCount}
                           size="small"
                         />
                       );
@@ -448,15 +452,22 @@ export default function SampleEntry() {
                     </Space>
                     <Space size={6}>
                       <span className="gb-hint">{formatCurrent(stat.avgCurrentA)}</span>
-                      <DiscreteBadge rate={stat.discreteRate} thresholds={thresholds} size="small" />
+                      <DiscreteBadge
+                        rate={stat.discreteRate}
+                        thresholds={thresholds}
+                        reviewed={stat.reviewed}
+                        reviewReason={stat.reviewReason}
+                        size="small"
+                      />
                     </Space>
                   </div>
                 ))}
               </Space>
             )}
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-              归一化基准辐照度 {thresholds.standardIrradiance} W/m²；电流偏差 ≥{' '}
-              {thresholds.currentBiasPercent}% 判可疑；最少采集点数 {thresholds.minSampleCount}。
+              同窗复核：箱内最近 8 点，保留辐照度落在箱内中位数 ±15% 带宽内的点；归一化基准辐照度{' '}
+              {thresholds.standardIrradiance} W/m²；离散率与偏差基准取同窗归一化电流中位数，电流偏差 ≥{' '}
+              {thresholds.currentBiasPercent}% 判可疑；窗内有效串不足 3 串时保留原判定并在徽标标注原因。
             </Typography.Paragraph>
           </Card>
         </Col>
@@ -632,7 +643,8 @@ export default function SampleEntry() {
         )}
 
         <Typography.Paragraph type="secondary" style={{ marginTop: 12 }}>
-          提示：批量录入后系统按汇流箱分组重算离散率，离散率 = 组串归一化电流标准差 / 均值 × 100%。当前可疑偏差阈值{' '}
+          提示：批量录入后按汇流箱分组做同窗复核——箱内最近 8 点、辐照中位数 ±15% 带宽、归一化电流中位数基准；
+          离散率 = 各串归一化电流中位数的标准差 / 中位数 × 100%，窗内有效串不足 3 串时保留原判定。当前可疑偏差阈值{' '}
           {formatPercent(thresholds.currentBiasPercent, 0)}。
         </Typography.Paragraph>
       </Drawer>

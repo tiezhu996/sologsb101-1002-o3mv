@@ -14,7 +14,7 @@ import type { Sample } from '../types/sample';
 import type { Disposal } from '../types/disposal';
 import { DEFAULT_THRESHOLDS, type ThresholdRow } from '../types/settings';
 import { ROW_REVISION, type Revisioned } from '../types/persistence';
-import { normalizeCurrent, discreteRate } from './discrete';
+import { discreteRate, normalizeCurrent, reviewBoxSamples, type StringOwner } from './discrete';
 import { nowIso, round, shiftDate, todayDate, uuid } from './format';
 
 /** 数据库名（浏览器 IndexedDB 库名） */
@@ -326,17 +326,44 @@ async function seedDatabase(): Promise<void> {
     });
   });
 
-  // 采集离散率落库：按逆变器+汇流箱分组计算，写入每条采集记录
+  // 采集离散率落库：按逆变器+汇流箱分组做同窗复核，箱级复核率写入该箱每条采集记录；
+  // 窗内不足 3 串的箱子回退逐串时序旧口径，保证与 utils/discrete.ts 口径一致
+  const ownerMap = new Map<string, StringOwner>(
+    strings.map((item) => [item.id, { id: item.id, inverterId: item.inverterId, combinerBox: item.combinerBox }]),
+  );
   const byBucket = new Map<string, SampleRow[]>();
   for (const sample of samples) {
-    const owner = strings.find((item) => item.id === sample.stringId);
+    const owner = ownerMap.get(sample.stringId);
     if (!owner) continue;
     const key = `${owner.inverterId}::${owner.combinerBox}`;
     const list = byBucket.get(key);
     if (list) list.push(sample);
     else byBucket.set(key, [sample]);
   }
-  for (const list of byBucket.values()) {
+  for (const [key, list] of byBucket) {
+    const review = reviewBoxSamples(key, list);
+    if (review.reviewed) {
+      // 参与同窗的串写入箱级复核率；窗内无点落入辐照带宽的串不参与复核，回退逐串时序旧口径
+      const peerIds = new Set(review.peers.map((peer) => peer.stringId));
+      for (const row of list) {
+        if (peerIds.has(row.stringId)) row.discreteRate = review.rate;
+      }
+      const byString = new Map<string, SampleRow[]>();
+      for (const sample of list) {
+        if (peerIds.has(sample.stringId)) continue;
+        const rows = byString.get(sample.stringId);
+        if (rows) rows.push(sample);
+        else byString.set(sample.stringId, [sample]);
+      }
+      for (const rows of byString.values()) {
+        const ordered = [...rows].sort((a, b) => a.sampledAt.localeCompare(b.sampledAt)).slice(-8);
+        const rate = discreteRate(
+          ordered.map((row) => normalizeCurrent(row.currentA, row.irradianceWm2)),
+        );
+        for (const row of rows) row.discreteRate = rate;
+      }
+      continue;
+    }
     const byString = new Map<string, SampleRow[]>();
     for (const sample of list) {
       const rows = byString.get(sample.stringId);
@@ -344,8 +371,9 @@ async function seedDatabase(): Promise<void> {
       else byString.set(sample.stringId, [sample]);
     }
     for (const rows of byString.values()) {
+      const ordered = [...rows].sort((a, b) => a.sampledAt.localeCompare(b.sampledAt)).slice(-8);
       const rate = discreteRate(
-        rows.map((row) => normalizeCurrent(row.currentA, row.irradianceWm2)),
+        ordered.map((row) => normalizeCurrent(row.currentA, row.irradianceWm2)),
       );
       for (const row of rows) row.discreteRate = rate;
     }

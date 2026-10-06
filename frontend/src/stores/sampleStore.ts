@@ -23,7 +23,13 @@ import {
 import type { SampleDraft, SampleRow as SampleViewRow, StringDiscreteStat } from '../types/sample';
 import type { ThresholdConfig } from '../types/settings';
 import { DEFAULT_THRESHOLDS } from '../types/settings';
-import { buildStringStats, discreteRate, normalizeCurrent } from '../utils/discrete';
+import {
+  buildStringStats,
+  discreteRate,
+  normalizeCurrent,
+  reviewBoxSamples,
+  type StringOwner,
+} from '../utils/discrete';
 import { nowIso, uuid } from '../utils/format';
 import { emitChange, subscribeChange } from '../utils/events';
 
@@ -66,7 +72,12 @@ function hydrateStats(
   plants: PlantRow[],
   thresholds: ThresholdConfig,
 ): StringDiscreteStat[] {
-  const base = buildStringStats(samples, thresholds);
+  const owners: StringOwner[] = strings.map((item) => ({
+    id: item.id,
+    inverterId: item.inverterId,
+    combinerBox: item.combinerBox,
+  }));
+  const base = buildStringStats(samples, owners, thresholds);
   return base.map((stat) => {
     const owner = strings.find((item) => item.id === stat.stringId);
     const inverter = owner ? inverters.find((item) => item.id === owner.inverterId) : undefined;
@@ -270,7 +281,7 @@ export const useSampleStore = create<SampleStoreState>((set, get) => ({
   },
 
   async recalcDiscreteRate(stringId) {
-    const { strings, samples } = get();
+    const { strings, samples, thresholds } = get();
     const owner = strings.find((item) => item.id === stringId);
     if (!owner) return 0;
     const peers = strings.filter(
@@ -279,10 +290,59 @@ export const useSampleStore = create<SampleStoreState>((set, get) => ({
     const peerIds = new Set(peers.map((item) => item.id));
     const scope = samples.length > 0 ? samples : await listSamples();
     const targets = scope.filter((item) => peerIds.has(item.stringId));
-    const values = targets.slice(-40).map((item) => normalizeCurrent(item.currentA, item.irradianceWm2));
-    const rate = discreteRate(values.length > 0 ? values : [0]);
-    // 同一汇流箱内组串互为基准：把该汇流箱下全部采集记录的离散率一起回写，保证口径一致
-    await Promise.all(targets.map((item) => putSample({ ...item, discreteRate: rate })));
-    return rate;
+
+    // 同窗复核：同箱最近 8 点、辐照中位数 ±15%、中位数基准
+    const review = reviewBoxSamples(
+      `${owner.inverterId}::${owner.combinerBox}`,
+      targets,
+      thresholds,
+    );
+    if (review.reviewed) {
+      // 复核成功：参与同窗的串，箱级离散率一致回写；窗内无点落入辐照带宽的串不参与复核，保留旧口径
+      const peerIds = new Set(review.peers.map((peer) => peer.stringId));
+      const writes: Promise<void>[] = targets
+        .filter((item) => peerIds.has(item.stringId))
+        .map((item) => putSample({ ...item, discreteRate: review.rate }));
+      const otherRows = targets.filter((item) => !peerIds.has(item.stringId));
+      const byString = new Map<string, SampleRow[]>();
+      for (const row of otherRows) {
+        const list = byString.get(row.stringId);
+        if (list) list.push(row);
+        else byString.set(row.stringId, [row]);
+      }
+      for (const rows of byString.values()) {
+        const sorted = [...rows].sort((a, b) => a.sampledAt.localeCompare(b.sampledAt)).slice(-8);
+        const rate = discreteRate(
+          sorted.map((item) => normalizeCurrent(item.currentA, item.irradianceWm2, thresholds)),
+        );
+        writes.push(...rows.map((item) => putSample({ ...item, discreteRate: rate })));
+      }
+      await Promise.all(writes);
+      if (review.perString.has(stringId)) return review.rate;
+      const ownerRows = otherRows.filter((item) => item.stringId === stringId);
+      return discreteRate(
+        ownerRows
+          .sort((a, b) => a.sampledAt.localeCompare(b.sampledAt))
+          .slice(-8)
+          .map((item) => normalizeCurrent(item.currentA, item.irradianceWm2, thresholds)),
+      );
+    }
+    // 窗内不足 3 串：保留原判定，逐串按时序旧口径回写
+    const byString = new Map<string, SampleRow[]>();
+    for (const row of targets) {
+      const list = byString.get(row.stringId);
+      if (list) list.push(row);
+      else byString.set(row.stringId, [row]);
+    }
+    let ownerRate = 0;
+    for (const [id, rows] of byString) {
+      const sorted = [...rows].sort((a, b) => a.sampledAt.localeCompare(b.sampledAt)).slice(-8);
+      const rate = discreteRate(
+        sorted.map((item) => normalizeCurrent(item.currentA, item.irradianceWm2, thresholds)),
+      );
+      await Promise.all(rows.map((item) => putSample({ ...item, discreteRate: rate })));
+      if (id === stringId) ownerRate = rate;
+    }
+    return ownerRate;
   },
 }));

@@ -142,9 +142,9 @@ export default function DisposalList() {
         const inverter = inverters.find((row) => row.id === item.inverterId);
         const stat = stats.find((row) => row.stringId === item.id);
         return {
-          label: `${item.combinerBox} / ${item.code}（${inverter?.model ?? '-'}）离散率 ${
-            stat?.discreteRate?.toFixed(2) ?? '0.00'
-          }%`,
+          label: `${item.combinerBox} / ${item.code}（${inverter?.model ?? '-'}）${
+            stat?.reviewed ? '同窗复核' : '原判定'
+          }离散率 ${stat?.discreteRate?.toFixed(2) ?? '0.00'}%`,
           value: item.id,
           rate: stat?.discreteRate ?? 0,
         };
@@ -285,7 +285,7 @@ export default function DisposalList() {
             size="small"
             dataSource={filtered}
             pagination={{ pageSize: 10, size: 'small' }}
-            scroll={{ x: 1180 }}
+            scroll={{ x: 1250 }}
             columns={[
               {
                 title: '类型',
@@ -322,10 +322,21 @@ export default function DisposalList() {
               {
                 title: '派单离散率',
                 dataIndex: 'initialDiscreteRate',
-                width: 130,
-                render: (value: number) => (
-                  <DiscreteBadge rate={value} thresholds={thresholds} size="small" />
-                ),
+                width: 200,
+                render: (value: number, row) => {
+                  const stat = stats.find((item) => item.stringId === row.stringId);
+                  return (
+                    <DiscreteBadge
+                      rate={value}
+                      thresholds={thresholds}
+                      reviewed={stat?.reviewed}
+                      reviewReason={stat?.reviewReason}
+                      peerStringCount={stat?.peerStringCount}
+                      windowPointCount={stat?.windowPointCount}
+                      size="small"
+                    />
+                  );
+                },
               },
               { title: '责任人', dataIndex: 'owner', width: 100 },
               { title: '要求完成', dataIndex: 'dueDate', width: 120 },
@@ -489,7 +500,11 @@ export default function DisposalList() {
           <Form.Item name="dueDate" label="要求完成日期" rules={[{ required: true, message: '请选择日期' }]}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="initialDiscreteRate" label="派单离散率（%）">
+          <Form.Item
+            name="initialDiscreteRate"
+            label="派单离散率（%）"
+            extra="初始值取自同窗复核结果（箱内最近 8 点、辐照中位数 ±15%、中位数基准）；同窗有效串不足 3 串时同步保留原判定，可在排查榜徽标查看原因。"
+          >
             <InputNumber min={0} max={100} step={0.1} style={{ width: '100%' }} />
           </Form.Item>
         </Form>

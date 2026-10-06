@@ -162,7 +162,7 @@ export default function DiagnoseBoard() {
             失配排查工作台
           </Typography.Title>
           <Typography.Text type="secondary">
-            按离散率与电流偏差排序定位可疑组串，支持人工标记、同汇流箱/同逆变器对比追溯与一键派单。
+            按同窗复核离散率与电流偏差排序定位可疑组串：每箱最近 8 点、辐照中位数 ±15% 带宽、归一化电流中位数基准，支持人工标记、同汇流箱/同逆变器追溯与一键派单；窗内不足 3 串保留原判定并标注原因。
           </Typography.Text>
         </div>
         <Space wrap>
@@ -274,7 +274,7 @@ export default function DiagnoseBoard() {
                 size="small"
                 dataSource={filtered}
                 pagination={{ pageSize: 12, size: 'small' }}
-                scroll={{ x: 1080 }}
+                scroll={{ x: 1150 }}
                 rowClassName={(row) => (markedStringIds.includes(row.stringId) ? 'gb-rank-row is-marked' : '')}
                 rowSelection={{
                   selectedRowKeys: selectedIds,
@@ -302,7 +302,7 @@ export default function DiagnoseBoard() {
                   },
                   {
                     title: '离散率',
-                    width: 165,
+                    width: 230,
                     sorter: (a, b) => a.discreteRate - b.discreteRate,
                     render: (_, row) => (
                       <DiscreteBadge
@@ -310,6 +310,10 @@ export default function DiagnoseBoard() {
                         thresholds={thresholds}
                         biasPercent={row.currentBiasPercent}
                         sampleCount={row.sampleCount}
+                        reviewed={row.reviewed}
+                        reviewReason={row.reviewReason}
+                        peerStringCount={row.peerStringCount}
+                        windowPointCount={row.windowPointCount}
                         size="small"
                       />
                     ),
@@ -401,6 +405,13 @@ export default function DiagnoseBoard() {
                         </Button>
                         <span>
                           {DISCRETE_LEVEL_LABEL[stat.level]} {stat.discreteRate.toFixed(2)}%
+                          {stat.reviewed ? (
+                            <Tag color="blue" style={{ marginInlineStart: 4 }}>
+                              同窗
+                            </Tag>
+                          ) : (
+                            <Tag style={{ marginInlineStart: 4 }}>原判定</Tag>
+                          )}
                         </span>
                       </Space>
                       <Progress
@@ -483,10 +494,34 @@ export default function DiagnoseBoard() {
               <Descriptions.Item label="串联数">{detailString.seriesCount}</Descriptions.Item>
               <Descriptions.Item label="分组键">{groupKeyOf(target)}</Descriptions.Item>
               <Descriptions.Item label="离散率" span={1}>
-                <DiscreteBadge rate={target.discreteRate} thresholds={thresholds} />
+                <DiscreteBadge
+                  rate={target.discreteRate}
+                  thresholds={thresholds}
+                  reviewed={target.reviewed}
+                  reviewReason={target.reviewReason}
+                  peerStringCount={target.peerStringCount}
+                  windowPointCount={target.windowPointCount}
+                />
               </Descriptions.Item>
               <Descriptions.Item label="电流偏差">
                 {formatPercent(target.currentBiasPercent, 2, true)}
+              </Descriptions.Item>
+              <Descriptions.Item label="同窗复核">
+                {target.reviewed ? (
+                  <Space size={4} wrap>
+                    <Tag color="blue">已复核</Tag>
+                    <span className="gb-hint">
+                      {target.peerStringCount} 串同窗 · 本串窗内 {target.windowPointCount} 点 · 辐照中位数{' '}
+                      {target.windowIrradianceMedian} W/m²（{target.windowIrradianceLower}~
+                      {target.windowIrradianceUpper}）
+                    </span>
+                  </Space>
+                ) : (
+                  <Space size={4} wrap>
+                    <Tag>原判定</Tag>
+                    <span className="gb-hint">{target.reviewReason || '同窗复核未启用，保留原判定'}</span>
+                  </Space>
+                )}
               </Descriptions.Item>
               <Descriptions.Item label="未闭环处置">
                 {openDisposalsOf(target.stringId)} 单
@@ -519,9 +554,15 @@ export default function DiagnoseBoard() {
                       },
                       {
                         title: '离散率',
-                        width: 110,
+                        width: 180,
                         render: (_, row) => (
-                          <DiscreteBadge rate={row.discreteRate} thresholds={thresholds} size="small" />
+                          <DiscreteBadge
+                            rate={row.discreteRate}
+                            thresholds={thresholds}
+                            reviewed={row.reviewed}
+                            reviewReason={row.reviewReason}
+                            size="small"
+                          />
                         ),
                       },
                     ]}
@@ -579,9 +620,15 @@ export default function DiagnoseBoard() {
                   },
                   {
                     title: '离散率',
-                    width: 150,
+                    width: 180,
                     render: (_, row) => (
-                      <DiscreteBadge rate={row.discreteRate} thresholds={thresholds} size="small" />
+                      <DiscreteBadge
+                        rate={row.discreteRate}
+                        thresholds={thresholds}
+                        reviewed={row.reviewed}
+                        reviewReason={row.reviewReason}
+                        size="small"
+                      />
                     ),
                   },
                   {
