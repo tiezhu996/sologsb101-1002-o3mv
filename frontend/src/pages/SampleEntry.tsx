@@ -26,7 +26,12 @@ import dayjs from 'dayjs';
 import { useSampleStore } from '../stores/sampleStore';
 import { useDeviceStore } from '../stores/deviceStore';
 import type { SampleDraft, SampleRow as SampleViewRow, StringDiscreteStat } from '../types/sample';
-import { normalizeCurrent } from '../utils/discrete';
+import {
+  IRRADIANCE_BAND_PERCENT,
+  MIN_REVIEW_STRINGS,
+  REVIEW_WINDOW_SIZE,
+  normalizeCurrent,
+} from '../utils/discrete';
 import { formatCurrent, formatIrradiance, formatPercent, formatVoltage, share } from '../utils/unit';
 import DiscreteBadge from '../components/common/DiscreteBadge';
 import EmptyPanel from '../components/common/EmptyPanel';
@@ -372,6 +377,7 @@ export default function SampleEntry() {
                           thresholds={thresholds}
                           biasPercent={stat?.currentBiasPercent}
                           sampleCount={stat?.sampleCount}
+                          note={stat?.reviewNote || undefined}
                           size="small"
                         />
                       );
@@ -448,15 +454,22 @@ export default function SampleEntry() {
                     </Space>
                     <Space size={6}>
                       <span className="gb-hint">{formatCurrent(stat.avgCurrentA)}</span>
-                      <DiscreteBadge rate={stat.discreteRate} thresholds={thresholds} size="small" />
+                      <DiscreteBadge
+                        rate={stat.discreteRate}
+                        thresholds={thresholds}
+                        note={stat.reviewNote || undefined}
+                        size="small"
+                      />
                     </Space>
                   </div>
                 ))}
               </Space>
             )}
             <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
-              归一化基准辐照度 {thresholds.standardIrradiance} W/m²；电流偏差 ≥{' '}
-              {thresholds.currentBiasPercent}% 判可疑；最少采集点数 {thresholds.minSampleCount}。
+              同窗复核：每串最近 {REVIEW_WINDOW_SIZE} 条 · 辐照度保留箱内中位 ±
+              {IRRADIANCE_BAND_PERCENT}% · 代表值与箱基准取中位数；归一化基准{' '}
+              {thresholds.standardIrradiance} W/m²；偏差 ≥ {thresholds.currentBiasPercent}% 判可疑；
+              窗内不足 {MIN_REVIEW_STRINGS} 串保留原判定。
             </Typography.Paragraph>
           </Card>
         </Col>

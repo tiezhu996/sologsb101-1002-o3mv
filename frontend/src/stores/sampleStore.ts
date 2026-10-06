@@ -23,7 +23,7 @@ import {
 import type { SampleDraft, SampleRow as SampleViewRow, StringDiscreteStat } from '../types/sample';
 import type { ThresholdConfig } from '../types/settings';
 import { DEFAULT_THRESHOLDS } from '../types/settings';
-import { buildStringStats, discreteRate, normalizeCurrent } from '../utils/discrete';
+import { buildStringStats, normalizeCurrent } from '../utils/discrete';
 import { nowIso, uuid } from '../utils/format';
 import { emitChange, subscribeChange } from '../utils/events';
 
@@ -66,7 +66,7 @@ function hydrateStats(
   plants: PlantRow[],
   thresholds: ThresholdConfig,
 ): StringDiscreteStat[] {
-  const base = buildStringStats(samples, thresholds);
+  const base = buildStringStats(samples, strings, thresholds);
   return base.map((stat) => {
     const owner = strings.find((item) => item.id === stat.stringId);
     const inverter = owner ? inverters.find((item) => item.id === owner.inverterId) : undefined;
@@ -270,19 +270,17 @@ export const useSampleStore = create<SampleStoreState>((set, get) => ({
   },
 
   async recalcDiscreteRate(stringId) {
-    const { strings, samples } = get();
-    const owner = strings.find((item) => item.id === stringId);
+    const owner = get().strings.find((item) => item.id === stringId);
     if (!owner) return 0;
-    const peers = strings.filter(
-      (item) => item.inverterId === owner.inverterId && item.combinerBox === owner.combinerBox,
+    // 始终基于全量最新采集做同窗复核，保证采集表 / 离散率榜 / 排查榜口径一致
+    const [samples, strings] = await Promise.all([listSamples(), listStrings()]);
+    const stat = buildStringStats(samples, strings, get().thresholds).find(
+      (item) => item.stringId === stringId,
     );
-    const peerIds = new Set(peers.map((item) => item.id));
-    const scope = samples.length > 0 ? samples : await listSamples();
-    const targets = scope.filter((item) => peerIds.has(item.stringId));
-    const values = targets.slice(-40).map((item) => normalizeCurrent(item.currentA, item.irradianceWm2));
-    const rate = discreteRate(values.length > 0 ? values : [0]);
-    // 同一汇流箱内组串互为基准：把该汇流箱下全部采集记录的离散率一起回写，保证口径一致
-    await Promise.all(targets.map((item) => putSample({ ...item, discreteRate: rate })));
-    return rate;
+    if (!stat) return 0;
+    // 复核离散率回写本串采集记录，处置单初始值同源
+    const targets = samples.filter((item) => item.stringId === stringId);
+    await Promise.all(targets.map((item) => putSample({ ...item, discreteRate: stat.discreteRate })));
+    return stat.discreteRate;
   },
 }));

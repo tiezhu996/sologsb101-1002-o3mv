@@ -34,7 +34,7 @@ import { useCompareGroup, useStringRank } from '../hooks/useStringRank';
 import type { StringDiscreteStat } from '../types/sample';
 import { DISCRETE_LEVEL_LABEL } from '../types/sample';
 import { groupKeyOf } from '../utils/discrete';
-import { formatCurrent, formatPercent, share } from '../utils/unit';
+import { formatCurrent, formatIrradiance, formatPercent, share } from '../utils/unit';
 import { shiftDate } from '../utils/format';
 import DiscreteBadge from '../components/common/DiscreteBadge';
 import EmptyPanel from '../components/common/EmptyPanel';
@@ -310,6 +310,7 @@ export default function DiagnoseBoard() {
                         thresholds={thresholds}
                         biasPercent={row.currentBiasPercent}
                         sampleCount={row.sampleCount}
+                        note={row.reviewNote || undefined}
                         size="small"
                       />
                     ),
@@ -491,6 +492,11 @@ export default function DiagnoseBoard() {
               <Descriptions.Item label="未闭环处置">
                 {openDisposalsOf(target.stringId)} 单
               </Descriptions.Item>
+              <Descriptions.Item label="同窗复核" span={3}>
+                {target.reviewed
+                  ? `窗内 ${target.windowCount} 点 · 保留 ${target.keptCount} 点 · 辐照中位 ${formatIrradiance(target.medianIrradiance)} · 箱基准 ${formatCurrent(target.baselineA)}（中位数口径）`
+                  : target.reviewNote || '未复核'}
+              </Descriptions.Item>
             </Descriptions>
 
             <Row gutter={14}>
@@ -513,7 +519,7 @@ export default function DiagnoseBoard() {
                         ),
                       },
                       {
-                        title: '归一化电流',
+                        title: '代表电流',
                         dataIndex: 'avgNormalizedCurrentA',
                         render: (value: number) => formatCurrent(value),
                       },

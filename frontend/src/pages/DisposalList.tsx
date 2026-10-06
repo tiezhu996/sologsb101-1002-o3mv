@@ -489,7 +489,11 @@ export default function DisposalList() {
           <Form.Item name="dueDate" label="要求完成日期" rules={[{ required: true, message: '请选择日期' }]}>
             <DatePicker style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item name="initialDiscreteRate" label="派单离散率（%）">
+          <Form.Item
+            name="initialDiscreteRate"
+            label="派单离散率（%）"
+            extra="默认取该串同窗复核离散率（与采集表、排查榜同口径），可手动调整"
+          >
             <InputNumber min={0} max={100} step={0.1} style={{ width: '100%' }} />
           </Form.Item>
         </Form>

@@ -19,6 +19,8 @@ export interface DiscreteBadgeProps {
   biasPercent?: number;
   /** 采集点数不足时的提示 */
   sampleCount?: number;
+  /** 同窗复核说明（未复核原因等），并入悬浮提示 */
+  note?: string;
   size?: 'small' | 'default';
 }
 
@@ -33,6 +35,7 @@ export default function DiscreteBadge({
   showValue = true,
   biasPercent,
   sampleCount,
+  note,
   size = 'default',
 }: DiscreteBadgeProps) {
   const level = levelOf(rate, thresholds);
@@ -41,6 +44,7 @@ export default function DiscreteBadge({
     `离散率 ${rate.toFixed(2)}%（关注 ≥ ${thresholds.discreteWatchRate}%，失配 ≥ ${thresholds.discreteAlarmRate}%）`,
     typeof biasPercent === 'number' ? `电流偏差 ${formatPercent(biasPercent, 2, true)}` : '',
     typeof sampleCount === 'number' ? `采集点数 ${sampleCount}` : '',
+    note ?? '',
   ]
     .filter(Boolean)
     .join(' · ');

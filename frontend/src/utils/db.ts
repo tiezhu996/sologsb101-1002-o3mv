@@ -14,7 +14,7 @@ import type { Sample } from '../types/sample';
 import type { Disposal } from '../types/disposal';
 import { DEFAULT_THRESHOLDS, type ThresholdRow } from '../types/settings';
 import { ROW_REVISION, type Revisioned } from '../types/persistence';
-import { normalizeCurrent, discreteRate } from './discrete';
+import { buildStringStats } from './discrete';
 import { nowIso, round, shiftDate, todayDate, uuid } from './format';
 
 /** 数据库名（浏览器 IndexedDB 库名） */
@@ -326,29 +326,12 @@ async function seedDatabase(): Promise<void> {
     });
   });
 
-  // 采集离散率落库：按逆变器+汇流箱分组计算，写入每条采集记录
-  const byBucket = new Map<string, SampleRow[]>();
+  // 采集离散率落库：同窗复核口径（每串最近 8 条 + 辐照度箱内中位 ±15% 过滤 + 中位数基准），
+  // 与采集表 / 离散率榜 / 排查榜 / 处置单初始值保持同一算法
+  const reviewStats = buildStringStats(samples, strings, DEFAULT_THRESHOLDS);
+  const rateOf = new Map(reviewStats.map((item) => [item.stringId, item.discreteRate]));
   for (const sample of samples) {
-    const owner = strings.find((item) => item.id === sample.stringId);
-    if (!owner) continue;
-    const key = `${owner.inverterId}::${owner.combinerBox}`;
-    const list = byBucket.get(key);
-    if (list) list.push(sample);
-    else byBucket.set(key, [sample]);
-  }
-  for (const list of byBucket.values()) {
-    const byString = new Map<string, SampleRow[]>();
-    for (const sample of list) {
-      const rows = byString.get(sample.stringId);
-      if (rows) rows.push(sample);
-      else byString.set(sample.stringId, [sample]);
-    }
-    for (const rows of byString.values()) {
-      const rate = discreteRate(
-        rows.map((row) => normalizeCurrent(row.currentA, row.irradianceWm2)),
-      );
-      for (const row of rows) row.discreteRate = rate;
-    }
+    sample.discreteRate = rateOf.get(sample.stringId) ?? 0;
   }
 
   // 处置单：为离散率最高的前 5 个组串建单，状态各不相同
